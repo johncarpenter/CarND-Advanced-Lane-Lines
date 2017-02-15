@@ -1,26 +1,20 @@
 import sys,argparse
 import os
 import cv2
+import image_processor as ImageProcessor
 from moviepy.editor import VideoFileClip
+import numpy as np
 
+camera = False
 
-import utils
 
 
 def process_image(rawimage):
 
-    # Calibrate the image
-    mtx, dist = utils.read_camera_data()
-    image = cv2.undistort(rawimage, mtx, dist, None, mtx)
+    image,left,right = ImageProcessor.process_image(rawimage, camera)
 
-    # Apply corrections
-    process_pipeline(image)
+    return image
 
-    # Perspective Transform Image
-
-
-
-    return rawimage
 
 def process_video(infile,outfile):
     print("Reading {}".format(os.path.basename(infile)))
@@ -32,6 +26,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Adv Lane Finding')
     parser.add_argument('-i','--input', help='Input video file',required=True,dest="input")
     parser.add_argument('-o','--output',help='Output video file', required=True,dest="output")
+    parser.add_argument('-c', dest="camera",help='Calibration File from calibrate.py')
     args = parser.parse_args()
+
+    camera = args.camera
 
     process_video(args.input, args.output)
