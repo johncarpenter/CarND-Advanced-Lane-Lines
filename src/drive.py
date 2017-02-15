@@ -6,18 +6,21 @@ from moviepy.editor import VideoFileClip
 import numpy as np
 
 camera = False
-
-
+left_line = Line()
+right_line = Line()
 
 def process_image(rawimage):
 
-    image,left,right = ImageProcessor.process_image(rawimage, camera)
+    image,left_line,right_line = ImageProcessor.process_image_smoothing(rawimage, camera)
 
     return image
 
 
 def process_video(infile,outfile):
     print("Reading {}".format(os.path.basename(infile)))
+
+
+
     clip = VideoFileClip(infile)
     adj_clip = clip.fl_image(process_image)
     adj_clip.write_videofile(outfile, audio=False)

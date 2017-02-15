@@ -1,23 +1,6 @@
 import numpy as np
 
 
-# poly order dep -
-def kalman_c(x, P, measurement, R,
-              motion = np.matrix('0. 0. 0.').T,
-              Q = np.matrix(np.eye(3))):
-    """
-    Parameters:
-    x: initial state of coefficients (c0, c1)
-    P: initial uncertainty convariance matrix
-    measurement: line fit coefficients
-    R: line fit errors
-    motion: external motion added to state vector x
-    Q: motion noise (same shape as P)
-    """
-    return kalman(x, P, measurement, R, motion, Q,
-                  F = np.matrix(np.matrix(np.eye(3))),
-                  H = np.matrix(np.matrix(np.eye(3))))
-
 def predict(x, P, motion = np.matrix('0. 0. 0.').T, Q = np.matrix(np.eye(3)), F = np.matrix(np.matrix(np.eye(3)))):
     # PREDICT x, P based on motion
     x = F*x + motion

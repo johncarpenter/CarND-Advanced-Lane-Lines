@@ -4,18 +4,9 @@ import pickle
 import kalman as Kalman
 import math
 
-
-xml = np.matrix('0. 0. 0.').T
-Pl = np.matrix(np.eye(3))*5 # initial uncertainty
-Ql = np.matrix(np.eye(3))*0.5 # delta changes
-
-xmr = np.matrix('0. 0. 0.').T
-Pr = np.matrix(np.eye(3))*0.5 # initial uncertainty
-
-def process_image_smoothing(image, camera):
+def process_image_smoothing(image, camera, left_line=left_line, right_line=right_line):
     raw_image = image.copy()
 
-    global xml,Pl,xmr,Pr
     if(camera):
         #print("Importing Camera Calibration from {}".format(camera))
         mtx,dist = read_camera_data(camera)
@@ -23,102 +14,70 @@ def process_image_smoothing(image, camera):
     #else:
         #print("Skipping Camera Calibration")
 
+    # Generate HLS Images
     s = hls_select(image,thresh=(120, 220))
 
+    # Sobel Images
     ksize=15
-
-    # Apply each of the thresholding functions
     gradx = abs_sobel_thresh(image, orient='x', sobel_kernel=ksize, thresh=(25,110))
     grady = abs_sobel_thresh(image, orient='y', sobel_kernel=ksize, thresh=(25,255))
 
+    # Magnitude Images
     mag_binary = mag_thresh(image, sobel_kernel=ksize, mag_thresh=(30, 255))
 
+    # Direction Images
     dir_binary = dir_threshold(image, sobel_kernel=ksize, thresh=(0.1,1.1))
 
+    # Merge the images. Based on lots of trial and error
     combined = np.zeros_like(dir_binary)
     combined[((gradx == 1)&(s == 1))|((dir_binary == 1)&(mag_binary == 1))] = 1
 
-
+    # Apply Perspective Shift
     warp = warp_image(combined)
 
-    residual_x = -1
-    residual_y = -1
-
-    reset_l = False
-    reset_r = False
-
-    if(xml.all()):
-        guide_left=np.poly1d(xml.flatten().tolist()[0])
-    else:
-        guide_left=None
-
-    if(xmr.all()):
-        guide_right=np.poly1d(xmr.flatten().tolist()[0])
-    else:
-        guide_right=None
-
+    # Using previous measurements to guide histogram search
+    guide_left = left_line.get_as_poly()
+    guide_right = right_line.get_as_poly()
 
     #try:
     left,right,left_error, right_error, out_img  = histogram_find_lane(warp,render_out = True, guide_left=guide_left, guide_right=guide_right)
 
-
+    # Fit Errors. Measure of the accuracy
     left_error = np.matrix(np.eye(3))*(np.sum(left_error**2))
     right_error = np.matrix(np.eye(3))*(np.sum(right_error**2))
 
+    xl,Pl,rl = left_line.predict(left,left_error)
+    residual_l = rl.T*rl
 
-    l = calc_curvature(np.poly1d(left))
-    r = calc_curvature(np.poly1d(right))
-
-    #if not xml.all():
-    #    xml = np.matrix(left).T
-    #else:
-    xmlp,Pl,rx = Kalman.kalman_c(xml,Pl,left,left_error)
-    residual_x = rx.T*rx
-
-    #if (residual_x <= 100):
-        # use measured / filtered value
-    xml = xmlp
-        # between 100 - 1000 we use the previous measurement instead
-    #elif( residual_x > 100 and residual_x <= 1000):
-    #    xml,Pl = Kalman.predict(xml,Pl,Q=Ql)
-    if( residual_x > 40000 ):
-        reset_l = True
-
-    if not xmr.all():
-        xmr = np.matrix(right).T
+    if(residual_l > 40000):
+        left_line.reset()
     else:
-        #error = np.matrix(np.eye(3))*5
-        xmrp,Pr,ry = Kalman.kalman_c(xmr,Pr,right, right_error)
-        residual_y = ry.T*ry
+        left_line.apply_update(xl,Pl)
 
-        xmr = xmrp
-        if( residual_y > 40000):
-            reset_r = True
+    xr,Pr,rr = right_line.predict(right,right_error)
+    residual_r = rr.T*rr
 
+    if(residual_r > 40000):
+        right_line.reset()
+    else:
+        right_line.apply_update(xl,Pl)
 
-    #except Exception as error:
-    #    print("Error processing image:",str(error))
+    overlay = draw_lane_poly(warp,left_line.x,right_line.x)
 
-    overlay = draw_lane_poly(warp,xml,xmr)
+    # Remap to drive perspective
     overlay = unwarp_image(overlay)
 
-    if(reset_r):
-        xmr = np.matrix('0. 0. 0.').T
-        Pr = np.matrix(np.eye(3))*0.5
-
-    if(reset_l):
-        xml = np.matrix('0. 0. 0.').T
-        Pl = np.matrix(np.eye(3))*0.5
-
-    #display_text = "L: {}  R: {}".format(residual_x,residual_y)
-    display_text = "L: {}  R: {}".format(l,r)
-
+    # Add the overlay to the original image
     final = cv2.addWeighted(raw_image, 1, overlay, 0.3, 0)
 
+    # Overlay the Curvature on the images
+    l = left_line.curvature()
+    r = right_line.curvature()
+    display_text = "L: {:0.2f}m  R: {0.2f}".format(l,r)
     font = cv2.FONT_HERSHEY_SIMPLEX
     final = cv2.putText(final,display_text,(10,100), font, 0.5,(255,255,255),2)
 
-
+    # Add the processing window. Shows Histogram fitting errors
     fit_errors = "L: {}  R: {}".format(np.sum(left_error**2),np.sum(right_error**2))
     out_img = cv2.putText(out_img,fit_errors,(10,100), font, 1,(255,255,255),2)
     out_img = cv2.resize(out_img,(320,240))
@@ -127,7 +86,7 @@ def process_image_smoothing(image, camera):
     final[y_offset:y_offset+out_img.shape[0], x_offset:x_offset+out_img.shape[1]] = out_img
 
 
-    return final,xml,xmr
+    return final,left_line,right_line
 
 
 
@@ -171,20 +130,7 @@ def process_image(image, camera):
     final = cv2.addWeighted(raw_image, 1, overlay, 0.3, 0)
     return final,left,right
 
-def calc_curvature(fit_cr):
 
-    # Define conversions in x and y from pixels space to meters
-    ym_per_pix = 30/720 # meters per pixel in y dimension
-    xm_per_pix = 3.7/700 # meters per pixel in x dimension
-
-    y = np.array(np.linspace(0, 719, num=10))
-    x = np.array([fit_cr(x) for x in y])
-    y_eval = np.max(y)
-
-    fit_cr = np.polyfit(y * ym_per_pix, x * xm_per_pix, 2)
-    curverad = ((1 + (2 * fit_cr[0] * y_eval / 2. + fit_cr[1]) ** 2) ** 1.5) / np.absolute(2 * fit_cr[0])
-
-    return curverad
 
 def draw_lane_poly(img, left, right):
 
