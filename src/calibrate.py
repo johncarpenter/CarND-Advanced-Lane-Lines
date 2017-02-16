@@ -76,11 +76,9 @@ def output_results(mtx,dist,outfile='camera_pickle.p'):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Camera Calibration')
     parser.add_argument('input', help='Calibration directory',required=True,dest="input")
-# TODO
+    # TODO
     #parser.add_argument('-s', help='Chessboard size x,y ',required=False,dest="n")
     #parser.add_argument('-t', help='Test Calibration Image',required=False,dest="test")
-
-
 
     args = parser.parse_args()
 

@@ -1,1 +1,7 @@
-Please save your output images to this folder and include a description in your README of what each image shows.
+— Output Images
+
+
+calibration_test.png - Visual output of camera calibration being applied
+
+testN.jpg - Images from image_processor_test.py. Still images used in order to evaluate the image preprocessing and algorithms
+

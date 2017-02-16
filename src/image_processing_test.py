@@ -7,132 +7,130 @@ import matplotlib.image as mpimg
 import cv2, math
 import numpy as np
 
-import image_processor as Image
+from ImageProcessor import ImageProcessor
+from Line import Line
 
 import matplotlib.gridspec as gridspec
 
-inter_images = []
+class ImageProcessingPlayground:
+    def __init__(self,camera = None, output = False):
+        self.Image = ImageProcessor(camera, use_smoothing = False)
+
+        self.output = output
+        self.inter_images = []
+        self.camera = camera
+
+    def process_image(self,inputfile):
+        '''
+        Playground to evaluate various image processing techniques on test images
+        '''
+        print("Processing {}".format(inputfile))
+
+        raw_image = mpimg.imread(inputfile)
+
+        self.inter_images.append((self.draw_overlay(raw_image.copy()),'Raw','brg'))
+
+        image = raw_image.copy()
+
+        left_line = Line()
+        right_line = Line()
+
+        verify,l,r = self.Image.process_image(image, left_line, right_line)
+        self.inter_images.append((verify.copy(),'Verify','brg'))
+
+        if(self.camera):
+            print("Importing Camera Calibration from {}".format(self.camera))
+            mtx,dist = self.Image.read_camera_data(self.camera)
+            image = cv2.undistort(image, mtx, dist, None, mtx)
+
+            self.inter_images.append((image.copy(),'Calibrated','brg'))
+        else:
+            print("Skipping Camera Calibration")
+
+        s = self.Image.hls_select(image,thresh=(110, 255))
+        self.inter_images.append((s,'S Channel (110,255)','gray'))
+
+        ksize=15
+
+        # Apply each of the thresholding functions
+        gradx = self.Image.abs_sobel_thresh(image, orient='x', sobel_kernel=ksize, thresh=(25,255))
+        self.inter_images.append((gradx,'X','gray'))
+
+        grady = self.Image.abs_sobel_thresh(image, orient='y', sobel_kernel=ksize, thresh=(25,255))
+        self.inter_images.append((grady,'Y','gray'))
+
+        mag_binary = self.Image.mag_thresh(image, sobel_kernel=ksize, mag_thresh=(30, 255))
+        self.inter_images.append((mag_binary,'Mag','gray'))
+
+        dir_binary = self.Image.dir_threshold(image, sobel_kernel=ksize, thresh=(0.2,1.0))
+        self.inter_images.append((dir_binary,'Dir','gray'))
+
+        combined = np.zeros_like(dir_binary)
+        combined[((s == 1))|((gradx == 1)&(grady == 1))|((dir_binary == 1)&(mag_binary == 1))] = 1
+
+        self.inter_images.append((combined,'Combined','gray'))
+
+        warp = self.Image.warp_image(combined)
+        self.inter_images.append((warp,'Warp','gray'))
+
+        left_line,right_line,out_img = self.Image.histogram_find_lane(warp,left_line,right_line,render_out=True)
+
+        overlay = self.Image.draw_lane_poly(warp,left_line.current_fit,right_line.current_fit)
+
+        # Remap to drive perspective
+        overlay = self.Image.unwarp_image(overlay)
+
+        # Add the overlay to the original image
+        final = cv2.addWeighted(raw_image, 1, overlay, 0.3, 0)
+
+        # draw road info
+        final = self.Image.draw_road_info(final, left_line, right_line)
+
+        # Add processing overlay
+        final = self.Image.draw_processing_inlay(final, out_img, left_line, right_line)
+
+        self.inter_images.append((final,'Final','brg'))
+
+        self.render_results()
 
 
+    def render_results(self, images_per_row = 4):
 
+        images = self.inter_images
+        nrow = math.ceil(len(images) / images_per_row)
 
-def process_image(inputfile, camera):
-    print("Processing {}".format(inputfile))
+        gs = gridspec.GridSpec(nrow,images_per_row)
 
-    raw_image = mpimg.imread(inputfile)
+        fig = plt.figure(figsize=(20,10))
+        for ndx,pair in enumerate(images):
+            ax = fig.add_subplot(gs[ndx])
+            ax.set_title("{}".format(pair[1]))
+            ax.imshow(pair[0],cmap=pair[2])
 
-    inter_images.append((draw_overlay(raw_image.copy()),'Raw','brg'))
+        if(self.output):
+            plt.savefig(self.output)
+        else:
+            plt.show()
+        self.inter_images = []
 
-    image = raw_image.copy()
+    def draw_overlay(self,img, color=[255, 0, 0], thickness=3):
+        src,dst = self.Image.get_transform_parameters(img)
 
-    #verify,l,r = Image.process_image(image, camera)
-    #inter_images.append((verify.copy(),'Verify','brg'))
+        lines = src.astype(int)
 
-    if(camera):
-        print("Importing Camera Calibration from {}".format(camera))
-        mtx,dist = Image.read_camera_data(camera)
-        image = cv2.undistort(image, mtx, dist, None, mtx)
-
-        inter_images.append((image.copy(),'Calibrated','brg'))
-    else:
-        print("Skipping Camera Calibration")
-
-    s = Image.hls_select(image,thresh=(0, 255))
-    inter_images.append((s,'S Channel (100,220)','gray'))
-    #image2 = cv2.GaussianBlur(image2, (5, 5), 0)
-
-    ksize=15
-
-    # Apply each of the thresholding functions
-    gradx = Image.abs_sobel_thresh(image, orient='x', sobel_kernel=ksize, thresh=(20,120))
-    inter_images.append((gradx,'X','gray'))
-
-    grady = Image.abs_sobel_thresh(image, orient='y', sobel_kernel=ksize, thresh=(20,100))
-    inter_images.append((grady,'Y','gray'))
-
-    mag_binary = Image.mag_thresh(image, sobel_kernel=ksize, mag_thresh=(30, 100))
-    inter_images.append((mag_binary,'Mag','gray'))
-
-    dir_binary = Image.dir_threshold(image, sobel_kernel=ksize, thresh=(0.7,1.2))
-    inter_images.append((dir_binary,'Dir','gray'))
-
-    combined = np.zeros_like(dir_binary)
-    combined[((gradx == 1)&(s == 1))|((dir_binary == 1)&(mag_binary == 1))] = 1
-    inter_images.append((combined,'Combined','gray'))
-
-    warp = Image.warp_image(combined)
-    inter_images.append((warp,'Warp','gray'))
-
-
-    left,right,out_img = Image.histogram_find_lane(warp)
-
-    out_img=draw_lane_lines(out_img,left)
-    out_img=draw_lane_lines(out_img,right)
-
-
-    inter_images.append((out_img,'Lane Finding','brg'))
-
-    #warp=draw_lane_lines(warp,left,right)
-    #inter_images.append((warp,'Lane Finding','brg'))
-
-    overlay = Image.draw_lane_poly(warp,left,right)
-    overlay = Image.unwarp_image(overlay)
-
-    final = cv2.addWeighted(raw_image, 1, overlay, 0.3, 0)
-
-    inter_images.append((final,'Final','brg'))
-
-    print("Left {} : Right {}".format(left,right))
-
-    render_results(inter_images)
-
-
-def draw_lane_lines(img, line_fit,color=[255, 255, 0],thickness=3):
-
-    ploty = np.linspace(0, img.shape[0]-1, img.shape[0] )
-    line_fitx = line_fit[0]*ploty**2 + line_fit[1]*ploty + line_fit[2]
-
-    for i in range(0,len(line_fitx)-1):
-        cv2.line(img, (int(line_fitx[i]), int(ploty[i])), (int(line_fitx[i+1]), int(ploty[i+1])), color, thickness)
-
-    return img;
-
-
-
-def render_results(images,output_file=False):
-
-    nrow = math.ceil(len(images) / 2)
-
-    gs = gridspec.GridSpec(nrow,2)
-
-    fig = plt.figure(figsize=(20,10))
-    for ndx,pair in enumerate(images):
-        ax = fig.add_subplot(gs[ndx])
-        ax.set_title("{}".format(pair[1]))
-        ax.imshow(pair[0],cmap=pair[2])
-
-    if(output_file):
-        plt.savefig("image_test_results.png")
-    else:
-        plt.show()
-
-def draw_overlay(img, color=[255, 0, 0], thickness=3):
-    src,dst = Image.get_transform_parameters(img)
-
-    lines = src.astype(int)
-
-    cv2.line(img, tuple(lines[0]), tuple(lines[1]), color,thickness)
-    cv2.line(img, tuple(lines[1]), tuple(lines[2]), color,thickness)
-    cv2.line(img, tuple(lines[2]), tuple(lines[3]), color,thickness)
-    cv2.line(img, tuple(lines[3]), tuple(lines[0]), color,thickness)
-    return img
+        cv2.line(img, tuple(lines[0]), tuple(lines[1]), color,thickness)
+        cv2.line(img, tuple(lines[1]), tuple(lines[2]), color,thickness)
+        cv2.line(img, tuple(lines[2]), tuple(lines[3]), color,thickness)
+        cv2.line(img, tuple(lines[3]), tuple(lines[0]), color,thickness)
+        return img
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Image Preprocessing Testing Tool')
     parser.add_argument('input', type=argparse.FileType('r'),help='test images file')
     parser.add_argument('-c', dest="camera",help='Calibration File from calibrate.py')
-
+    parser.add_argument('-o','--output',help='Output test file', dest="output")
 
     args = parser.parse_args()
 
-    process_image(args.input.name, args.camera)
+    ip = ImageProcessingPlayground(camera = args.camera,output = args.output)
+    ip.process_image(args.input.name)

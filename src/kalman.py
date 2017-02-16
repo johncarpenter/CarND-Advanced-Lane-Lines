@@ -1,13 +1,6 @@
 import numpy as np
 
 
-def predict(x, P, motion = np.matrix('0. 0. 0.').T, Q = np.matrix(np.eye(3)), F = np.matrix(np.matrix(np.eye(3)))):
-    # PREDICT x, P based on motion
-    x = F*x + motion
-    P = F*P*F.T + Q
-    return x,P
-
-
 def kalman(x, P, measurement, R, motion, Q, F, H):
     '''
     Parameters:
@@ -27,6 +20,7 @@ def kalman(x, P, measurement, R, motion, Q, F, H):
     This version of kalman can be applied to many different situations by
     appropriately defining F and H
     '''
+
     # UPDATE x, P based on measurement m
     # distance between measured and current position-belief
     y = np.matrix(measurement).T - H * x
