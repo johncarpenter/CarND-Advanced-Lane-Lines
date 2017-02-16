@@ -42,11 +42,13 @@ The next 4 steps involved transforming the images into a format that will help t
 ![Testing Image](http://static.2linessoftware.com.s3-website-us-east-1.amazonaws.com/images/test1.jpg)
 
 Here are the description of the images included;
+
 | Image Name | Details                                      |
 |------------|----------------------------------------------|
 | Raw        | Raw Image, with Perspective area highlighted |
-| Verify     | Verification image to ensure the video processing is the same as the test |
-| Calibrated | Raw Image after camera calibration |
+| Verify     | Verification image to ensure the video       |
+ processing is the same as the test                         |
+| Calibrated | Raw Image after camera calibration           |
 | S Channel  | Image is converted to HSL and the Saturation channel is extracted.|
 | X          | Sobel Filter only X direction |
 | Y          | Sobel Filter only Y direction |
