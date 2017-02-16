@@ -73,9 +73,13 @@ class ImageProcessingPlayground:
         warp = self.Image.warp_image(combined)
         self.inter_images.append((warp,'Warp','gray'))
 
-        left_line,right_line,out_img = self.Image.histogram_find_lane(warp,left_line,right_line,render_out=True)
+        clip = self.Image.remove_edge_pixels(warp.copy(), thresh=100)
+        self.inter_images.append((clip,'Clipped','gray'))
 
-        overlay = self.Image.draw_lane_poly(warp,left_line.current_fit,right_line.current_fit)
+        left_line,right_line,out_img = self.Image.histogram_find_lane(warp,left_line,right_line,render_out=True)
+        self.inter_images.append((out_img,'Histogram Search','brg'))
+
+        overlay = self.Image.draw_lane_poly(warp,left_line,right_line)
 
         # Remap to drive perspective
         overlay = self.Image.unwarp_image(overlay)
@@ -101,14 +105,15 @@ class ImageProcessingPlayground:
 
         gs = gridspec.GridSpec(nrow,images_per_row)
 
-        fig = plt.figure(figsize=(20,10))
+        fig = plt.figure()
+        #fig.set_size_inches(16,16)
         for ndx,pair in enumerate(images):
             ax = fig.add_subplot(gs[ndx])
             ax.set_title("{}".format(pair[1]))
             ax.imshow(pair[0],cmap=pair[2])
 
         if(self.output):
-            plt.savefig(self.output)
+            plt.savefig(self.output, dpi=300)
         else:
             plt.show()
         self.inter_images = []

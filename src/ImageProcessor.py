@@ -19,7 +19,6 @@ class ImageProcessor:
         image = self.__apply_camera(image)
 
         # Generate HLS Images
-        yellow = self.extract_yellow(image)
         s = self.hls_select(image,thresh=(100, 220))
 
         # Sobel Images
@@ -28,17 +27,18 @@ class ImageProcessor:
         grady = self.abs_sobel_thresh(image, orient='y', sobel_kernel=ksize, thresh=(25,255))
 
         # Magnitude Images
-        mag_binary = self.mag_thresh(image, sobel_kernel=ksize, mag_thresh=(30, 255))
+        mag_binary = self.mag_thresh(image, sobel_kernel=ksize, mag_thresh=(30, 512))
 
         # Direction Images
-        dir_binary = self.dir_threshold(image, sobel_kernel=ksize, thresh=(0.1,1.1))
+        dir_binary = self.dir_threshold(image, sobel_kernel=ksize, thresh=(0.7,1.2))
 
         # Merge the images. Based on lots of trial and error
         combined = np.zeros_like(dir_binary)
-        combined[(yellow==1)|((s == 1))|((gradx == 1)&(grady == 1))|((dir_binary == 1)&(mag_binary == 1))] = 1
+        combined[((s == 1))|((dir_binary == 1)&(mag_binary == 1))] = 1
 
         # Apply Perspective Shift
         warp = self.warp_image(combined)
+        warp = self.remove_edge_pixels(warp,thresh=100)
 
         # Locate the lane markers
         left_line,right_line, out_img  = self.histogram_find_lane(warp, left_line, right_line,render_out = True)
@@ -66,7 +66,7 @@ class ImageProcessor:
             else:
                 right_line.apply_update(xr,Pr,rr)
 
-        overlay = self.draw_lane_poly(warp,left_line.current_fit,right_line.current_fit)
+        overlay = self.draw_lane_poly(warp,left_line,right_line)
 
         # Remap to drive perspective
         overlay = self.unwarp_image(overlay)
@@ -110,15 +110,19 @@ class ImageProcessor:
 
 
 
-    def draw_lane_poly(self,img, left, right, color = (0,255,0)):
+    def draw_lane_poly(self,img, left_line, right_line, color = (0,255,0)):
 
         # Create an image to draw the lines on
         warp_zero = np.zeros_like(img).astype(np.uint8)
         color_warp = np.dstack((warp_zero, warp_zero, warp_zero))
 
         ploty = np.linspace(0, img.shape[0]-1, img.shape[0] )
-        left_fitx = left[0]*ploty**2 + left[1]*ploty + left[2]
-        right_fitx = right[0]*ploty**2 + right[1]*ploty + right[2]
+        #left_fitx = left[0]*ploty**2 + left[1]*ploty + left[2]
+        #right_fitx = right[0]*ploty**2 + right[1]*ploty + right[2]
+        left = left_line.get_as_poly()
+        left_fitx = left(ploty)
+        right = right_line.get_as_poly()
+        right_fitx = right(ploty)
 
         # Recast the x and y points into usable format for cv2.fillPoly()
         pts_left = np.array([np.transpose(np.vstack([left_fitx, ploty]))])
@@ -169,19 +173,19 @@ class ImageProcessor:
         # These will be the starting point for the left and right lines
         midpoint = np.int(histogram.shape[0]/2)
 
-        if(guide_left):
-            leftx_base = int(guide_left(img.shape[0]/4))
-        else:
-            leftx_base = np.argmax(histogram[:midpoint])
-
-        if(guide_right):
-            rightx_base = int(guide_right(img.shape[0]/4))
-        else:
-            rightx_base = np.argmax(histogram[:midpoint]) + midpoint
+        leftx_base = np.argmax(histogram[:midpoint])
+        rightx_base = np.argmax(histogram[:midpoint]) + midpoint
 
         # Current positions to be updated for each window
-        leftx_current = leftx_base
-        rightx_current = rightx_base
+        if(guide_left):
+            leftx_current = int(guide_left(img.shape[0]/4))
+        else:
+            leftx_current = leftx_base
+
+        if(guide_right):
+            rightx_current = int(guide_right(img.shape[0]/4))
+        else:
+            rightx_current = rightx_base
 
         # Choose the number of sliding windows
         nwindows = 9
@@ -193,7 +197,7 @@ class ImageProcessor:
         nonzerox = np.array(nonzero[1])
 
         # Set the width of the windows +/- margin
-        margin = 100
+        margin = 150
         # Set minimum number of pixels found to recenter window
         minpix = 50
         # Create empty lists to receive left and right lane pixel indices
@@ -228,8 +232,9 @@ class ImageProcessor:
             # Append these indices to the lists
             left_lane_inds.append(good_left_inds)
             right_lane_inds.append(good_right_inds)
-            # If you found > minpix pixels, recenter next window on their mean position
 
+            # If you found > minpix pixels, recenter next window on their mean position
+            # Only used if no guidance vectors are included
             if len(good_left_inds) > minpix:
                 leftx_current = np.int(np.mean(nonzerox[good_left_inds]))
 
@@ -259,6 +264,10 @@ class ImageProcessor:
         left_fit,left_error = np.polyfit(lefty, leftx, 2, cov=True)
         right_fit, right_error  = np.polyfit(righty, rightx, 2, cov=True)
 
+        '''
+        Sanity Checks. Should probably be expanded since there are lots of
+        details about roads (parallel/size) that can help determine outliers
+        '''
         left_sse= np.sum(left_error**2)
         if(left_sse > 0.5 and guide_left):
             left_fit = guide_left
@@ -269,15 +278,14 @@ class ImageProcessor:
 
         # test parallel
         if(guide_left and guide_right):
-            delta_a = np.abs(left_fit[0]-right_fit[0])
-            delta_b = np.abs(left_fit[1]-right_fit[1])
+            delta = np.abs(left_fit-right_fit)
 
-            if(delta_a > 0.0005 or delta_b > 0.5):
+            if(delta[0] > 0.0005 or delta[1] > 0.5):
                 # keep the line with the lowest error
-                if(left_sse < right_sse):
-                    right_fit = guide_right
-                else:
-                    left_fit = guide_left
+                #if(left_sse < right_sse):
+                right_fit = guide_right
+                #else:
+                left_fit = guide_left
 
 
         left_line.current_fit = left_fit
@@ -286,7 +294,6 @@ class ImageProcessor:
         right_line.current_fit = right_fit
         right_line.current_fit_error = right_error
 
-
         if(render_out):
             out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
             out_img[nonzeroy[right_lane_inds], nonzerox[right_lane_inds]] = [0, 0, 255]
@@ -294,12 +301,23 @@ class ImageProcessor:
         else:
             return left_line, right_line
 
+
     def read_camera_data(self,filename="camera_pickle.p"):
         #TODO handle missing file
         dist_pickle = pickle.load( open( filename, "rb" ) )
         mtx = dist_pickle["mtx"]
         dist = dist_pickle["dist"]
         return mtx, dist
+
+    def remove_edge_pixels(self, img, thresh=75):
+        shape=img.shape
+        w=shape[1]
+        h=shape[0]
+        # left
+        cv2.rectangle(img,(0,0),(thresh,h),(0,0,0),thresh)
+        #right
+        cv2.rectangle(img,(w-thresh,0),(w,h),(0,0,0),thresh)
+        return img
 
     def extract_yellow(self,img):
         """
