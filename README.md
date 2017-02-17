@@ -48,6 +48,7 @@ python calibrate.py [image_directory]
 This generates a `camera.p` pickle file which will be used in the remaining goals.
 
 The calibration is done with the following steps;
+
 1. All the images in the directory and loaded and converted to gray scale. One image is removed from the set to be used for verification testing.
 2. Since we are using a regularly spaced grid we can calculate the destination grid coordinates.
 3. OpenCV provides a method to calculate the source coordinates with `cv2.findChessboardCorners`
