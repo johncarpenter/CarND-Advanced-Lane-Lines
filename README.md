@@ -213,9 +213,23 @@ Finally, we take the predicted lane geometries and draw them on a blank image. W
 
 For the final output we also include, left and right curvatures, offsets and the picture window showing the top-down calculations.
 
-### Discussion
+### Discussion - Updated Feb 17, 2017
 
-This second project on lane determination took into consideration curvatures on the road and was better suited to roads with curves, which it turns out is most of them. It was a much more robust system for determining the lane markings and compared to the first project this one takes advantage of a-priori information to improve it's solution. However, the two optional video files performed moderately well (challenge.mp4) and poorly (harder_challenge.mp4) with the same algorithm. This indicates that solution may not be suitable for all cases. Some of the issues that could help out the algorithms are;
+This lane determination project had a slightly different approach than earlier projects. Instead of trying to determine the markings epoch by epoch, I wanted to use a Kalman filter to create an internal state and use the marking information to improve that state where possible. This allowed the system a much more flexible way to handle the data and we were less effected by outliers and bad measurements.
+
+In processing the videos, I ran into a some issues;
+
+1. *Parallel markings or barriers* One issue that was seen in the video was that the presence of a concrete road barrier parallel to the road markings that can often be confused as a lane marking. We compensate by doing a clipping process on the leftmost and rightmost pixels in the image. This eliminates some of the outliers on the edges of the image and enables the histogram to work slightly better
+
+2. *Different lighting conditions* The fixed set of filters responded differently based upon the lighting in the image, either shadows or changes in the road colors. This resulted in wildly incorrect lane calculations. Inside the Kalman filter we compensate by reducing the impact of uncertain solutions in our state. In some cases the measurements were discarded entirely.
+
+3. *Rapid road swerves* In the harder_challenge.mp4 video, the course was a swerving road at slow speed with many turns. In this case both the algorithm for lane detection and the Kalman filter were not able to keep up. For the image filtering; we were not able to calculate quick turns because of the thresholds set in the image processing. Increasing the threshold causes too much of the image to pass through causing incorrect curve fit solutions. The Kalman filter didn't have a sufficient internal model to handle multiple curves within a single image. There was some work on fitting a cubic or higher spline to the road geometry, but without accurate road measurements from the images it would not be possible to guage their accuracy. More work would be needed to be done to determine how best to process images from this video to locate the markings.
+
+4. *Non-parallel lane markings* While I didn't run into this case in the videos, there are plenty of scenarios where the markings may be missing on either side. This algorithm will do everything possible to locate the markings. In the event they are missing, the algorithm extrapolates from previous measurements. This prediction can handle short gaps well enough. I purposefully removed filters on lane size, and calculate the left and right independently. This should work well enough to handle this case.
+
+#### Potential improvements
+
+The two optional video files performed moderately well (challenge.mp4) and poorly (harder_challenge.mp4) with the same algorithm. This indicates that solution may not be suitable for all cases. Some of the issues that could help out the algorithms are;
 
 *Image Preprocessing*
 The algorithm is dependent upon reasonably accurate estimates for lane markings. Issues such as changes in lighting, road textures, or parallel road barriers would often show up as errors within the data which were very difficult to filter out. Changing the parameters of the image filters and combinations worked in some situations but not others. There didn't seem to be a generic model to handle those cases. It might be worth some research time to apply either multiple filtered images in parallel or a deep-learning algorithm to change the filters dynamically. Both would help out immensely
